@@ -25,12 +25,14 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
 
 protected:
+    void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 
 private:
     void createActions();
+    void refreshIcons();
 
     // File menu.
     void newProject();

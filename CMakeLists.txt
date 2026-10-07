@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia Test)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia Svg Test)
 qt_standard_project_setup()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -37,8 +37,24 @@ qt_add_executable(NXArranger MACOSX_BUNDLE
     src/WaveformView.cpp
     src/PadPanel.h
     src/PadPanel.cpp
+    src/Icons.h
+    src/Icons.cpp
 )
-target_link_libraries(NXArranger PRIVATE nxcore Qt6::Widgets Qt6::Multimedia)
+target_link_libraries(NXArranger PRIVATE nxcore Qt6::Widgets Qt6::Multimedia Qt6::Svg)
+
+# Embedded as :/icons/<name>.svg
+qt_add_resources(NXArranger "icons"
+    PREFIX "/"
+    BASE resources
+    FILES
+        resources/icons/new.svg
+        resources/icons/open.svg
+        resources/icons/save.svg
+        resources/icons/save-as.svg
+        resources/icons/play.svg
+        resources/icons/pause.svg
+        resources/icons/stop.svg
+)
 set_target_properties(NXArranger PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "NXArranger"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.nxarranger.app"

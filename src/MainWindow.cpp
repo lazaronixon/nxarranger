@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "AudioLoader.h"
+#include "Icons.h"
 #include "PadPanel.h"
 #include "SectionModel.h"
 #include "WavWriter.h"
@@ -229,10 +230,38 @@ void MainWindow::createActions()
 
     QToolBar *tb = addToolBar(tr("Main"));
     tb->setMovable(false);
-    tb->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    tb->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    tb->setIconSize(QSize(20, 20));
+    tb->addAction(m_newAct);
+    tb->addAction(m_openAct);
+    tb->addAction(m_saveAct);
+    tb->addAction(m_saveAsAct);
+    tb->addSeparator();
     tb->addAction(m_playAct);
     tb->addAction(m_pauseAct);
     tb->addAction(m_stopAct);
+
+    refreshIcons();
+}
+
+void MainWindow::refreshIcons()
+{
+    const QColor color = palette().color(QPalette::WindowText);
+    m_newAct->setIcon(Icons::themed("new", color));
+    m_openAct->setIcon(Icons::themed("open", color));
+    m_saveAct->setIcon(Icons::themed("save", color));
+    m_saveAsAct->setIcon(Icons::themed("save-as", color));
+    m_playAct->setIcon(Icons::themed("play", color));
+    m_pauseAct->setIcon(Icons::themed("pause", color));
+    m_stopAct->setIcon(Icons::themed("stop", color));
+}
+
+// Re-tint the icons when the system switches between light and dark mode.
+void MainWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        refreshIcons();
 }
 
 void MainWindow::newProject()
