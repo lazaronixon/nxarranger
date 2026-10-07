@@ -60,6 +60,7 @@ private:
     void onPlaybackTick();
     void updateStartStop();
     void seekToFrame(qint64 frame);
+    void nudgePlayhead(int pixels);
 
     void syncScrollBar();
     void updateActions();
@@ -103,6 +104,8 @@ private:
     QAction *m_playPauseAct = nullptr;
     QAction *m_stopAct = nullptr;
     QAction *m_goToStartAct = nullptr;
+    QAction *m_moveLeftAct = nullptr;
+    QAction *m_moveRightAct = nullptr;
     QAction *m_fitAct = nullptr;
     QAction *m_clearAct = nullptr;
 

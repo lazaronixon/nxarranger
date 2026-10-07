@@ -83,6 +83,18 @@ void WaveformView::setPlayhead(qint64 frame)
     update();
 }
 
+void WaveformView::ensureVisible(qint64 frame)
+{
+    if (!m_audio)
+        return;
+    const qint64 visible = visibleFrames();
+    const qint64 margin = visible / 20;
+    if (frame < viewStart() + margin)
+        setViewStart(frame - margin);
+    else if (frame > viewStart() + visible - margin)
+        setViewStart(frame - visible + margin);
+}
+
 void WaveformView::zoomToFit()
 {
     const int w = std::max(1, waveRect().width());

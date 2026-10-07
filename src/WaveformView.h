@@ -26,6 +26,10 @@ public:
 
     void setViewStart(qint64 frame);
     void setPlayhead(qint64 frame);
+    qint64 playhead() const { return m_playhead; }
+    double framesPerPixel() const { return m_framesPerPixel; }
+    // Scrolls just enough to bring `frame` into view.
+    void ensureVisible(qint64 frame);
     void zoomToFit();
     void zoomBy(double factor, int anchorX);
 

@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -185,6 +186,15 @@ void MainWindow::createActions()
         m_waveform->setViewStart(0);
     });
 
+    // ← / → move the playhead one screen pixel, so zooming in gives finer steps.
+    m_moveLeftAct = new QAction(tr("Move Left"), this);
+    m_moveLeftAct->setShortcut(Qt::Key_Left);
+    connect(m_moveLeftAct, &QAction::triggered, this, [this] { nudgePlayhead(-1); });
+
+    m_moveRightAct = new QAction(tr("Move Right"), this);
+    m_moveRightAct->setShortcut(Qt::Key_Right);
+    connect(m_moveRightAct, &QAction::triggered, this, [this] { nudgePlayhead(1); });
+
     m_fitAct = new QAction(tr("Zoom to Fit"), this);
     m_fitAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
     connect(m_fitAct, &QAction::triggered, m_waveform, &WaveformView::zoomToFit);
@@ -227,6 +237,8 @@ void MainWindow::createActions()
     transport->addAction(m_playPauseAct);
     transport->addAction(m_stopAct);
     transport->addAction(m_goToStartAct);
+    transport->addAction(m_moveLeftAct);
+    transport->addAction(m_moveRightAct);
 
     QToolBar *tb = addToolBar(tr("Main"));
     tb->setMovable(false);
@@ -646,6 +658,17 @@ void MainWindow::seekToFrame(qint64 frame)
     updateStartStop();
 }
 
+void MainWindow::nudgePlayhead(int pixels)
+{
+    if (m_audio.isEmpty())
+        return;
+    const qint64 step = std::max<qint64>(1, std::llround(std::abs(pixels) * m_waveform->framesPerPixel()));
+    const qint64 from = std::max<qint64>(0, m_waveform->playhead());
+    const qint64 to = std::clamp<qint64>(from + (pixels < 0 ? -step : step), 0, m_audio.frames());
+    seekToFrame(to);
+    m_waveform->ensureVisible(to);
+}
+
 void MainWindow::syncScrollBar()
 {
     const qint64 total = m_waveform->totalFrames();
@@ -669,6 +692,8 @@ void MainWindow::updateActions()
     m_playPauseAct->setEnabled(loaded);
     m_stopAct->setEnabled(loaded);
     m_goToStartAct->setEnabled(loaded);
+    m_moveLeftAct->setEnabled(loaded);
+    m_moveRightAct->setEnabled(loaded);
     m_pads->setStartStopEnabled(loaded && armedSet);
     m_fitAct->setEnabled(loaded);
     m_clearAct->setEnabled(armedSet);
