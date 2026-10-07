@@ -83,6 +83,26 @@ void WaveformView::setPlayhead(qint64 frame)
     update();
 }
 
+void WaveformView::ensureVisible(qint64 frame)
+{
+    if (!m_audio)
+        return;
+    const qint64 visible = visibleFrames();
+    const qint64 margin = visible / 20;
+    if (frame < viewStart() + margin)
+        setViewStart(frame - margin);
+    else if (frame > viewStart() + visible - margin)
+        setViewStart(frame - visible + margin);
+}
+
+void WaveformView::setEditable(bool editable)
+{
+    m_editable = editable;
+    m_drag = Drag::None;
+    if (!editable)
+        setCursor(Qt::ArrowCursor);
+}
+
 void WaveformView::zoomToFit()
 {
     const int w = std::max(1, waveRect().width());
@@ -348,7 +368,7 @@ WaveformView::Drag WaveformView::edgeAt(int x) const
 
 void WaveformView::mousePressEvent(QMouseEvent *event)
 {
-    if (!m_audio || event->button() != Qt::LeftButton)
+    if (!m_audio || !m_editable || event->button() != Qt::LeftButton)
         return;
     const int x = int(event->position().x());
     m_pressX = x;
@@ -360,6 +380,10 @@ void WaveformView::mouseMoveEvent(QMouseEvent *event)
 {
     if (!m_audio)
         return;
+    if (!m_editable) {
+        setCursor(Qt::ArrowCursor);
+        return;
+    }
     const int x = int(event->position().x());
     const int armed = m_model->armed();
 
@@ -404,7 +428,7 @@ void WaveformView::mouseMoveEvent(QMouseEvent *event)
 
 void WaveformView::mouseReleaseEvent(QMouseEvent *event)
 {
-    if (!m_audio || event->button() != Qt::LeftButton)
+    if (!m_audio || !m_editable || event->button() != Qt::LeftButton)
         return;
     if (m_drag == Drag::Pending)
         emit seekRequested(xToFrame(event->position().x()));
@@ -418,7 +442,7 @@ void WaveformView::mouseReleaseEvent(QMouseEvent *event)
 
 void WaveformView::mouseDoubleClickEvent(QMouseEvent *event)
 {
-    if (!m_audio)
+    if (!m_audio || !m_editable)
         return;
     // Double-click a region to arm its pad; prefer the shortest region under the cursor.
     const qint64 frame = xToFrame(event->position().x());

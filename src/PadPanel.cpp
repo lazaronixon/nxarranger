@@ -8,13 +8,16 @@
 #include <QMenu>
 #include <QPushButton>
 #include <QStyle>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
 
 QString padStyle(const QColor &c)
 {
-    // "assigned" lights the LED strip; "checked" marks the armed pad.
+    // "assigned" lights the LED strip; "checked" marks the armed pad (Edit) or
+    // the playing pad (Perform); "selected" marks the current variation while a
+    // one-shot plays over it.
     return QStringLiteral(
                "QPushButton {"
                "  min-width: 46px; min-height: 40px;"
@@ -29,7 +32,9 @@ QString padStyle(const QColor &c)
                "  color: #111;"
                "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %2, stop:1 %1);"
                "  border: 1px solid %2; border-top: 4px solid #fff;"
-               "}")
+               "}"
+               "QPushButton[selected=\"true\"] { border: 2px solid %2; border-top: 4px solid %2; }"
+               "QPushButton:disabled { color: #4a4e56; background: #202227; border-top: 4px solid #2b2e34; }")
         .arg(c.name(), c.lighter(140).name());
 }
 
@@ -111,7 +116,24 @@ PadPanel::PadPanel(SectionModel *model, QWidget *parent)
     transport->addWidget(m_startStop);
     row->addLayout(transport);
 
-    connect(m_group, &QButtonGroup::idClicked, m_model, &SectionModel::setArmed);
+    connect(m_group, &QButtonGroup::idClicked, this, [this](int index) {
+        if (m_perform) {
+            emit padTriggered(index);
+            applyPerformState(); // undo the click's own toggle until the next poll
+        } else {
+            m_model->setArmed(index);
+        }
+    });
+
+    // Queued pads blink, like the Pa3X's pending variation LED.
+    m_blink = new QTimer(this);
+    m_blink->setInterval(250);
+    connect(m_blink, &QTimer::timeout, this, [this] {
+        m_blinkOn = !m_blinkOn;
+        if (m_state.queued >= 0)
+            applyPerformState();
+    });
+
     connect(m_model, &SectionModel::sectionChanged, this, &PadPanel::refresh);
     connect(m_model, &SectionModel::armedChanged, this, [this](int index) {
         if (index >= 0 && index < m_buttons.size())
@@ -140,6 +162,64 @@ void PadPanel::setStartStopEnabled(bool enabled)
     m_startStop->setEnabled(enabled);
 }
 
+void PadPanel::setPerformMode(bool on)
+{
+    m_perform = on;
+    m_state = Arranger::State();
+    m_group->setExclusive(!on);
+    for (int i = 0; i < m_buttons.size(); ++i) {
+        QAbstractButton *button = m_buttons[i];
+        // Pads without a range can't be played.
+        button->setEnabled(!on || m_model->at(i).isSet());
+        setSelected(button, false);
+        button->setChecked(false);
+    }
+    m_startStop->setToolTip(on ? tr("Start / stop the arranger") : tr("Play the selected pad's range / stop"));
+
+    if (on) {
+        m_blink->start();
+    } else {
+        m_blink->stop();
+        m_group->setExclusive(true);
+        const int armed = m_model->armed();
+        if (armed >= 0 && armed < m_buttons.size())
+            m_buttons[armed]->setChecked(true);
+    }
+}
+
+void PadPanel::setPerformState(const Arranger::State &state)
+{
+    if (!m_perform)
+        return;
+    const bool same = state.running == m_state.running && state.playing == m_state.playing
+                      && state.queued == m_state.queued && state.variation == m_state.variation
+                      && state.armedIntro == m_state.armedIntro;
+    m_state = state;
+    if (!same)
+        applyPerformState();
+}
+
+void PadPanel::applyPerformState()
+{
+    const Arranger::State &s = m_state;
+    for (int i = 0; i < m_buttons.size(); ++i) {
+        bool lit = i == s.playing || (!s.running && (i == s.variation || i == s.armedIntro));
+        if (i == s.queued)
+            lit = m_blinkOn;
+        m_buttons[i]->setChecked(lit);
+        setSelected(m_buttons[i], s.running && i == s.variation && i != s.playing && i != s.queued);
+    }
+}
+
+void PadPanel::setSelected(QAbstractButton *button, bool selected)
+{
+    if (button->property("selected").toBool() == selected)
+        return;
+    button->setProperty("selected", selected);
+    button->style()->unpolish(button);
+    button->style()->polish(button);
+}
+
 void PadPanel::refresh(int index)
 {
     const Section &s = m_model->at(index);
@@ -161,6 +241,8 @@ void PadPanel::refresh(int index)
 
 void PadPanel::showPadMenu(int index, const QPoint &globalPos)
 {
+    if (m_perform)
+        return;
     QMenu menu(this);
     QAction *clear = menu.addAction(tr("Clear range of %1").arg(m_model->at(index).name));
     clear->setEnabled(m_model->at(index).isSet());

@@ -5,6 +5,7 @@
 
 #include <QMainWindow>
 
+class ArrangerDevice;
 class AudioLoader;
 class PadPanel;
 class QAction;
@@ -23,6 +24,7 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -61,6 +63,11 @@ private:
     void updateStartStop();
     void seekToFrame(qint64 frame);
 
+    // Perform (Pa3X-style) mode.
+    bool performing() const;
+    void setPerforming(bool on);
+    void onPerformTick();
+
     void syncScrollBar();
     void updateActions();
     void updateRangeLabel();
@@ -87,6 +94,8 @@ private:
     QMediaPlayer *m_player;
     QAudioOutput *m_audioOut;
     QTimer *m_tick;
+    ArrangerDevice *m_arranger = nullptr;
+    QTimer *m_performTick = nullptr;
 
     QLabel *m_fileLabel;
     QLabel *m_rangeLabel;
@@ -103,6 +112,7 @@ private:
     QAction *m_playPauseAct = nullptr;
     QAction *m_stopAct = nullptr;
     QAction *m_goToStartAct = nullptr;
+    QAction *m_performAct = nullptr;
     QAction *m_fitAct = nullptr;
     QAction *m_clearAct = nullptr;
 

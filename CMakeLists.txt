@@ -20,6 +20,8 @@ add_library(nxcore STATIC
     src/WavWriter.cpp
     src/Project.h
     src/Project.cpp
+    src/Arranger.h
+    src/Arranger.cpp
 )
 target_include_directories(nxcore PUBLIC src)
 target_link_libraries(nxcore PUBLIC Qt6::Core)
@@ -39,6 +41,8 @@ qt_add_executable(NXArranger MACOSX_BUNDLE
     src/PadPanel.cpp
     src/Icons.h
     src/Icons.cpp
+    src/ArrangerDevice.h
+    src/ArrangerDevice.cpp
 )
 target_link_libraries(NXArranger PRIVATE nxcore Qt6::Widgets Qt6::Multimedia Qt6::Svg)
 target_compile_definitions(NXArranger PRIVATE NXARRANGER_VERSION="${PROJECT_VERSION}")
@@ -55,6 +59,7 @@ qt_add_resources(NXArranger "icons"
         resources/icons/play.svg
         resources/icons/pause.svg
         resources/icons/stop.svg
+        resources/icons/perform.svg
 )
 set_target_properties(NXArranger PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "NXArranger"
@@ -71,3 +76,7 @@ add_test(NAME tst_wavwriter COMMAND tst_wavwriter)
 qt_add_executable(tst_project tests/tst_project.cpp)
 target_link_libraries(tst_project PRIVATE nxcore Qt6::Test)
 add_test(NAME tst_project COMMAND tst_project)
+
+qt_add_executable(tst_arranger tests/tst_arranger.cpp)
+target_link_libraries(tst_arranger PRIVATE nxcore Qt6::Test)
+add_test(NAME tst_arranger COMMAND tst_arranger)

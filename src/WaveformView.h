@@ -26,6 +26,10 @@ public:
 
     void setViewStart(qint64 frame);
     void setPlayhead(qint64 frame);
+    // Scrolls just enough to bring `frame` into view.
+    void ensureVisible(qint64 frame);
+    // When false (Perform mode) the mouse no longer edits regions or seeks.
+    void setEditable(bool editable);
     void zoomToFit();
     void zoomBy(double factor, int anchorX);
 
@@ -68,6 +72,7 @@ private:
     double m_framesPerPixel = 1.0;
     qint64 m_playhead = -1;
 
+    bool m_editable = true;
     Drag m_drag = Drag::None;
     int m_pressX = 0;
     qint64 m_anchorFrame = 0;

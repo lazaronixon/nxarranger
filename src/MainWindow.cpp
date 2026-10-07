@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ArrangerDevice.h"
 #include "AudioLoader.h"
 #include "Icons.h"
 #include "PadPanel.h"
@@ -90,6 +91,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_player->setAudioOutput(m_audioOut);
     m_tick->setInterval(20);
 
+    // Perform mode streams through its own device; poll it for the playhead and pad lights.
+    m_arranger = new ArrangerDevice(this);
+    m_performTick = new QTimer(this);
+    m_performTick->setInterval(30);
+    connect(m_performTick, &QTimer::timeout, this, &MainWindow::onPerformTick);
+
     createActions();
 
     connect(m_loader, &AudioLoader::progress, m_progress, &QProgressBar::setValue);
@@ -173,9 +180,25 @@ void MainWindow::createActions()
 
     m_stopAct = new QAction(tr("Stop"), this);
     m_stopAct->setShortcut(Qt::Key_Escape);
-    connect(m_stopAct, &QAction::triggered, this, &MainWindow::stop);
+    connect(m_stopAct, &QAction::triggered, this, [this] {
+        if (performing())
+            m_arranger->stop();
+        else
+            stop();
+    });
 
-    connect(m_pads, &PadPanel::startStopClicked, this, &MainWindow::toggleSection);
+    connect(m_pads, &PadPanel::startStopClicked, this, [this] {
+        if (performing())
+            m_arranger->startStop();
+        else
+            toggleSection();
+    });
+    connect(m_pads, &PadPanel::padTriggered, m_arranger, &ArrangerDevice::press);
+
+    m_performAct = new QAction(tr("Perform"), this);
+    m_performAct->setCheckable(true);
+    m_performAct->setToolTip(tr("Perform mode: pads play the song like a Pa3X style"));
+    connect(m_performAct, &QAction::toggled, this, &MainWindow::setPerforming);
 
     m_goToStartAct = new QAction(tr("Go to Start"), this);
     // Home, plus ⌘← for Mac keyboards without a Home key.
@@ -227,6 +250,8 @@ void MainWindow::createActions()
     transport->addAction(m_playPauseAct);
     transport->addAction(m_stopAct);
     transport->addAction(m_goToStartAct);
+    transport->addSeparator();
+    transport->addAction(m_performAct);
 
     QToolBar *tb = addToolBar(tr("Main"));
     tb->setMovable(false);
@@ -240,6 +265,8 @@ void MainWindow::createActions()
     tb->addAction(m_playAct);
     tb->addAction(m_pauseAct);
     tb->addAction(m_stopAct);
+    tb->addSeparator();
+    tb->addAction(m_performAct);
 
     refreshIcons();
 }
@@ -254,6 +281,7 @@ void MainWindow::refreshIcons()
     m_playAct->setIcon(Icons::themed("play", color));
     m_pauseAct->setIcon(Icons::themed("pause", color));
     m_stopAct->setIcon(Icons::themed("stop", color));
+    m_performAct->setIcon(Icons::themed("perform", color));
 }
 
 // Re-tint the icons when the system switches between light and dark mode.
@@ -413,6 +441,9 @@ void MainWindow::importSong(const QString &path)
 
 void MainWindow::resetSong()
 {
+    // The arranger reads m_audio directly; leave Perform mode before it goes away.
+    if (performing())
+        m_performAct->setChecked(false);
     m_loader->cancel();
     m_loading = false;
     m_progress->hide();
@@ -510,10 +541,92 @@ void MainWindow::updateTitle()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (maybeSave())
+    if (maybeSave()) {
+        m_arranger->shutdown();
         event->accept();
-    else
+    } else {
         event->ignore();
+    }
+}
+
+MainWindow::~MainWindow()
+{
+    // Stop the audio stream before m_audio, which it reads from, is destroyed.
+    m_arranger->shutdown();
+}
+
+namespace {
+
+Arranger::Role roleForGroup(const QString &group)
+{
+    if (group == "Intro")
+        return Arranger::Role::Intro;
+    if (group == "Fill")
+        return Arranger::Role::Fill;
+    if (group == "Break")
+        return Arranger::Role::Break;
+    if (group == "Ending")
+        return Arranger::Role::Ending;
+    return Arranger::Role::Variation;
+}
+
+} // namespace
+
+bool MainWindow::performing() const
+{
+    return m_performAct && m_performAct->isChecked();
+}
+
+void MainWindow::setPerforming(bool on)
+{
+    if (on) {
+        if (m_audio.isEmpty()) {
+            QSignalBlocker block(m_performAct);
+            m_performAct->setChecked(false);
+            return;
+        }
+        // Hand playback over from the editor's player.
+        m_player->pause();
+        m_sectionStartMs = m_sectionEndMs = -1;
+        m_playOriginMs = -1;
+
+        QVector<Arranger::Region> regions;
+        for (const Section &s : m_model->sections())
+            regions.push_back({roleForGroup(s.group), s.isSet() ? s.startFrame : -1, s.isSet() ? s.endFrame : -1});
+
+        QString error;
+        if (!m_arranger->start(&m_audio, regions, &error)) {
+            {
+                QSignalBlocker block(m_performAct);
+                m_performAct->setChecked(false);
+            }
+            QMessageBox::warning(this, tr("Perform mode"), error);
+            return;
+        }
+        m_pads->setPerformMode(true);
+        m_waveform->setEditable(false);
+        m_performTick->start();
+        statusBar()->showMessage(tr("Perform mode: press a variation and START/STOP"), 5000);
+    } else {
+        m_performTick->stop();
+        m_arranger->shutdown();
+        m_pads->setPerformMode(false);
+        m_pads->setStartStopActive(false);
+        m_waveform->setEditable(true);
+        m_waveform->setPlayhead(msToFrame(m_player->position()));
+    }
+    updateActions();
+}
+
+void MainWindow::onPerformTick()
+{
+    const Arranger::State state = m_arranger->state();
+    m_pads->setPerformState(state);
+    m_pads->setStartStopActive(state.running);
+    if (state.running) {
+        m_waveform->setPlayhead(state.frame);
+        m_waveform->ensureVisible(state.frame);
+    }
 }
 
 void MainWindow::exportRegions()
@@ -617,6 +730,8 @@ void MainWindow::playSection()
 
 void MainWindow::updateStartStop()
 {
+    if (performing())
+        return; // onPerformTick drives the pad in Perform mode
     m_pads->setStartStopActive(m_sectionEndMs >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState);
 }
 
@@ -664,14 +779,17 @@ void MainWindow::updateActions()
     const bool armedSet = armed >= 0 && m_model->at(armed).isSet();
     m_exportAct->setEnabled(loaded && m_model->anySet());
     const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
-    m_playAct->setEnabled(loaded && !playing);
-    m_pauseAct->setEnabled(loaded && playing);
-    m_playPauseAct->setEnabled(loaded);
+    const bool perform = performing();
+    // In Perform mode the pads and START/STOP drive playback; Stop still stops.
+    m_playAct->setEnabled(loaded && !playing && !perform);
+    m_pauseAct->setEnabled(loaded && playing && !perform);
+    m_playPauseAct->setEnabled(loaded && !perform);
     m_stopAct->setEnabled(loaded);
-    m_goToStartAct->setEnabled(loaded);
-    m_pads->setStartStopEnabled(loaded && armedSet);
+    m_goToStartAct->setEnabled(loaded && !perform);
+    m_pads->setStartStopEnabled(perform || (loaded && armedSet));
+    m_performAct->setEnabled(loaded);
     m_fitAct->setEnabled(loaded);
-    m_clearAct->setEnabled(armedSet);
+    m_clearAct->setEnabled(armedSet && !perform);
     // Saving mid-decode would drop regions that are still waiting to be applied.
     m_saveAct->setEnabled(!m_loading);
     m_saveAsAct->setEnabled(!m_loading);
