@@ -94,8 +94,11 @@ jobs:
           New-Item -ItemType Directory $name | Out-Null
           Copy-Item build/Release/NXArranger.exe $name/
           windeployqt --release --no-translations "$name/NXArranger.exe"
-          # Ship the MSVC runtime next to the exe so the zip runs without an installer.
-          Copy-Item C:/Windows/System32/msvcp140*.dll, C:/Windows/System32/vcruntime140*.dll $name/
+          # Ship the MSVC runtime next to the exe so the zip runs without an installer
+          # (release DLLs only; debug runtimes are not redistributable).
+          foreach ($dll in 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "C:/Windows/System32/$dll" $name/
+          }
           Compress-Archive -Path $name -DestinationPath "$name.zip"
 
       - name: Upload package
