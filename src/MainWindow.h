@@ -102,12 +102,14 @@ private:
     QAction *m_pauseAct = nullptr;
     QAction *m_playPauseAct = nullptr;
     QAction *m_stopAct = nullptr;
+    QAction *m_goToStartAct = nullptr;
     QAction *m_playSectionAct = nullptr;
-    QAction *m_loopAct = nullptr;
     QAction *m_fitAct = nullptr;
     QAction *m_clearAct = nullptr;
 
-    // While previewing a section, playback stops (or loops) at this position.
+    // While previewing a section, playback stops at this position.
     qint64 m_sectionStartMs = -1;
     qint64 m_sectionEndMs = -1;
+    // Where Stop returns the playhead; -1 when no play pass is in progress.
+    qint64 m_playOriginMs = -1;
 };

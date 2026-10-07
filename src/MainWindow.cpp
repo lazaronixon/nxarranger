@@ -179,9 +179,13 @@ void MainWindow::createActions()
     connect(m_playSectionAct, &QAction::triggered, this, &MainWindow::toggleSection);
     connect(m_pads, &PadPanel::startStopClicked, this, &MainWindow::toggleSection);
 
-    m_loopAct = new QAction(tr("Loop"), this);
-    m_loopAct->setCheckable(true);
-    m_loopAct->setShortcut(Qt::Key_L);
+    m_goToStartAct = new QAction(tr("Go to Start"), this);
+    // Home, plus ⌘← for Mac keyboards without a Home key.
+    m_goToStartAct->setShortcuts({QKeySequence(Qt::Key_Home), QKeySequence(Qt::CTRL | Qt::Key_Left)});
+    connect(m_goToStartAct, &QAction::triggered, this, [this] {
+        seekToFrame(0);
+        m_waveform->setViewStart(0);
+    });
 
     m_fitAct = new QAction(tr("Zoom to Fit"), this);
     m_fitAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
@@ -224,9 +228,9 @@ void MainWindow::createActions()
     transport->addAction(m_pauseAct);
     transport->addAction(m_playPauseAct);
     transport->addAction(m_stopAct);
+    transport->addAction(m_goToStartAct);
     transport->addSeparator();
     transport->addAction(m_playSectionAct);
-    transport->addAction(m_loopAct);
 
     QToolBar *tb = addToolBar(tr("Main"));
     tb->setMovable(false);
@@ -408,6 +412,7 @@ void MainWindow::resetSong()
     m_player->stop();
     m_player->setSource({});
     m_sectionStartMs = m_sectionEndMs = -1;
+    m_playOriginMs = -1;
     m_waveform->setAudio(nullptr);
     m_audio = {};
     m_path.clear();
@@ -555,20 +560,27 @@ void MainWindow::togglePlay()
         play();
 }
 
+// After Pause, Play resumes the same pass (including a section preview);
+// otherwise it starts a new pass and remembers where it started.
 void MainWindow::play()
 {
     if (m_audio.isEmpty())
         return;
-    m_sectionStartMs = m_sectionEndMs = -1;
+    if (m_playOriginMs < 0) {
+        m_sectionStartMs = m_sectionEndMs = -1;
+        m_playOriginMs = m_player->position();
+    }
     m_player->play();
     updateStartStop();
 }
 
+// Stop returns the playhead to the point where playback was started.
 void MainWindow::stop()
 {
     m_player->pause();
-    const qint64 back = m_sectionStartMs >= 0 ? m_sectionStartMs : 0;
+    const qint64 back = m_playOriginMs >= 0 ? m_playOriginMs : m_player->position();
     m_sectionStartMs = m_sectionEndMs = -1;
+    m_playOriginMs = -1;
     m_player->setPosition(back);
     m_waveform->setPlayhead(msToFrame(back));
     updateStartStop();
@@ -590,6 +602,7 @@ void MainWindow::playSection()
     const Section &s = m_model->at(armed);
     m_sectionStartMs = frameToMs(s.startFrame);
     m_sectionEndMs = frameToMs(s.endFrame);
+    m_playOriginMs = m_sectionStartMs;
     m_player->setPosition(m_sectionStartMs);
     m_player->play();
     updateStartStop();
@@ -604,14 +617,11 @@ void MainWindow::onPlaybackTick()
 {
     const qint64 pos = m_player->position();
     if (m_sectionEndMs >= 0 && pos >= m_sectionEndMs) {
-        if (m_loopAct->isChecked()) {
-            m_player->setPosition(m_sectionStartMs);
-        } else {
-            m_player->pause();
-            m_player->setPosition(m_sectionStartMs);
-            m_sectionStartMs = m_sectionEndMs = -1;
-            updateStartStop();
-        }
+        m_player->pause();
+        m_player->setPosition(m_sectionStartMs);
+        m_sectionStartMs = m_sectionEndMs = -1;
+        m_playOriginMs = -1;
+        updateStartStop();
         m_waveform->setPlayhead(msToFrame(m_player->position()));
         return;
     }
@@ -621,6 +631,9 @@ void MainWindow::onPlaybackTick()
 void MainWindow::seekToFrame(qint64 frame)
 {
     m_sectionStartMs = m_sectionEndMs = -1;
+    // Clicking while playing makes the click point the new return point;
+    // clicking while paused/stopped makes the next Play start a fresh pass.
+    m_playOriginMs = m_player->playbackState() == QMediaPlayer::PlayingState ? frameToMs(frame) : -1;
     m_player->setPosition(frameToMs(frame));
     m_waveform->setPlayhead(frame);
     updateStartStop();
@@ -648,6 +661,7 @@ void MainWindow::updateActions()
     m_pauseAct->setEnabled(loaded && playing);
     m_playPauseAct->setEnabled(loaded);
     m_stopAct->setEnabled(loaded);
+    m_goToStartAct->setEnabled(loaded);
     m_playSectionAct->setEnabled(loaded && armedSet);
     m_pads->setStartStopEnabled(loaded && armedSet);
     m_fitAct->setEnabled(loaded);
