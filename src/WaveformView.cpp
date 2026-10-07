@@ -207,7 +207,7 @@ void WaveformView::paintEvent(QPaintEvent *)
     const QRect wr = waveRect();
     if (!m_audio) {
         p.setPen(kTextColor);
-        p.drawText(wr, Qt::AlignCenter, tr("Open an MP3 file (File ▸ Open or drag it here)"));
+        p.drawText(wr, Qt::AlignCenter, tr("Import an MP3 file (File ▸ Import Song or drag it here)"));
         return;
     }
 

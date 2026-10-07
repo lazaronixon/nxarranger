@@ -11,6 +11,9 @@ qt_standard_project_setup()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options(-Wall -Wextra)
+elseif(MSVC)
+    # Sources contain UTF-8 string literals ("Open…", "—", "▸").
+    add_compile_options(/utf-8)
 endif()
 
 # Core library shared by the app and the tests.
@@ -24,7 +27,8 @@ add_library(nxcore STATIC
 target_include_directories(nxcore PUBLIC src)
 target_link_libraries(nxcore PUBLIC Qt6::Core)
 
-qt_add_executable(NXArranger MACOSX_BUNDLE
+# WIN32: a GUI app on Windows (no console window).
+qt_add_executable(NXArranger WIN32 MACOSX_BUNDLE
     src/main.cpp
     src/MainWindow.h
     src/MainWindow.cpp
