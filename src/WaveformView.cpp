@@ -383,6 +383,13 @@ void WaveformView::mouseMoveEvent(QMouseEvent *event)
     if (m_drag == Drag::Pending) {
         if (std::abs(x - m_pressX) < kDragThreshold || armed < 0)
             return;
+        // An existing range is only replaced after it is cleared; its edges
+        // can still be dragged to adjust it.
+        if (m_model->at(armed).isSet()) {
+            m_drag = Drag::Blocked;
+            emit rangeLocked(armed);
+            return;
+        }
         m_drag = Drag::NewRange;
         m_anchorFrame = xToFrame(m_pressX);
     }

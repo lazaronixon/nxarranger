@@ -99,6 +99,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_waveform, &WaveformView::viewChanged, this, &MainWindow::syncScrollBar);
     connect(m_waveform, &WaveformView::seekRequested, this, &MainWindow::seekToFrame);
+    connect(m_waveform, &WaveformView::rangeLocked, this, [this](int index) {
+        statusBar()->showMessage(
+            tr("%1 already has a range. Clear it first (Delete, or right-click the pad).").arg(m_model->at(index).name),
+            5000);
+    });
     connect(m_scroll, &QScrollBar::valueChanged, this, [this](int v) {
         if (v != m_waveform->viewStart())
             m_waveform->setViewStart(v);

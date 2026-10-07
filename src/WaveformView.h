@@ -39,6 +39,8 @@ public:
 signals:
     void viewChanged();
     void seekRequested(qint64 frame);
+    // A drag tried to draw over pad `index`'s existing range.
+    void rangeLocked(int index);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -50,7 +52,8 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *event) override;
 
 private:
-    enum class Drag { None, Pending, NewRange, ResizeStart, ResizeEnd };
+    // Blocked: a drag that would replace an existing range; ignored until release.
+    enum class Drag { None, Pending, NewRange, ResizeStart, ResizeEnd, Blocked };
 
     void buildPeaks();
     void clampView();
