@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioData.h"
+#include "Project.h"
 
 #include <QMainWindow>
 
@@ -23,20 +24,34 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
-    void openFile(const QString &path);
-
 protected:
+    void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 
 private:
     void createActions();
-    void openDialog();
-    void exportSections();
+
+    // File menu.
+    void newProject();
+    void openProjectDialog();
+    void openProject(const QString &path);
+    bool saveProject();
+    bool saveProjectAs();
+    bool writeProject(const QString &path);
+    void importSongDialog();
+    void importSong(const QString &path);
+    void exportRegions();
+    bool maybeSave();
+
+    void resetSong();
+    void loadSong(const QString &path);
     void onAudioLoaded(const AudioData &audio);
     void onLoadFailed(const QString &message);
+    void applyPendingRegions();
 
     void togglePlay();
+    void play();
     void stop();
     void toggleSection();
     void playSection();
@@ -47,12 +62,20 @@ private:
     void syncScrollBar();
     void updateActions();
     void updateRangeLabel();
+    void updateTitle();
 
     qint64 msToFrame(qint64 ms) const;
     qint64 frameToMs(qint64 frame) const;
 
     AudioData m_audio;
-    QString m_path;
+    QString m_path;          // song file
+    QString m_projectPath;   // .nxa file, empty until first save
+    bool m_loading = false;
+    bool m_trackChanges = true;
+
+    // Regions from an opened project, applied once its song finishes decoding.
+    QVector<Project::Region> m_pendingRegions;
+    int m_pendingRate = 0;
 
     SectionModel *m_model;
     WaveformView *m_waveform;
@@ -67,9 +90,15 @@ private:
     QLabel *m_rangeLabel;
     QProgressBar *m_progress;
 
+    QAction *m_newAct = nullptr;
     QAction *m_openAct = nullptr;
+    QAction *m_saveAct = nullptr;
+    QAction *m_saveAsAct = nullptr;
+    QAction *m_importAct = nullptr;
     QAction *m_exportAct = nullptr;
     QAction *m_playAct = nullptr;
+    QAction *m_pauseAct = nullptr;
+    QAction *m_playPauseAct = nullptr;
     QAction *m_stopAct = nullptr;
     QAction *m_playSectionAct = nullptr;
     QAction *m_loopAct = nullptr;

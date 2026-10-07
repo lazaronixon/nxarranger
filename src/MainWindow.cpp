@@ -8,6 +8,7 @@
 
 #include <QAction>
 #include <QAudioOutput>
+#include <QCloseEvent>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -25,6 +26,9 @@
 #include <QToolBar>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <utility>
+
 namespace {
 
 QString formatSeconds(double s)
@@ -37,6 +41,11 @@ bool isAudioFile(const QString &path)
 {
     const QString suffix = QFileInfo(path).suffix().toLower();
     return suffix == "mp3" || suffix == "wav" || suffix == "m4a" || suffix == "flac" || suffix == "ogg";
+}
+
+bool isProjectFile(const QString &path)
+{
+    return QFileInfo(path).suffix().compare(Project::kSuffix, Qt::CaseInsensitive) == 0;
 }
 
 } // namespace
@@ -93,6 +102,8 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_model, &SectionModel::sectionChanged, this, [this] {
+        if (m_trackChanges)
+            setWindowModified(true);
         updateActions();
         updateRangeLabel();
     });
@@ -104,7 +115,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tick, &QTimer::timeout, this, &MainWindow::onPlaybackTick);
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state) {
         const bool playing = state == QMediaPlayer::PlayingState;
-        m_playAct->setText(playing ? tr("Pause") : tr("Play"));
+        updateActions();
         if (playing)
             m_tick->start();
         else
@@ -119,21 +130,44 @@ MainWindow::MainWindow(QWidget *parent)
     m_model->setArmed(0);
     updateActions();
     updateRangeLabel();
+    updateTitle();
 }
 
 void MainWindow::createActions()
 {
+    m_newAct = new QAction(tr("New"), this);
+    m_newAct->setShortcut(QKeySequence::New);
+    connect(m_newAct, &QAction::triggered, this, &MainWindow::newProject);
+
     m_openAct = new QAction(tr("Open…"), this);
     m_openAct->setShortcut(QKeySequence::Open);
-    connect(m_openAct, &QAction::triggered, this, &MainWindow::openDialog);
+    connect(m_openAct, &QAction::triggered, this, &MainWindow::openProjectDialog);
 
-    m_exportAct = new QAction(tr("Export WAV…"), this);
+    m_saveAct = new QAction(tr("Save"), this);
+    m_saveAct->setShortcut(QKeySequence::Save);
+    connect(m_saveAct, &QAction::triggered, this, &MainWindow::saveProject);
+
+    m_saveAsAct = new QAction(tr("Save As…"), this);
+    m_saveAsAct->setShortcut(QKeySequence::SaveAs);
+    connect(m_saveAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
+
+    m_importAct = new QAction(tr("Import Song…"), this);
+    m_importAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    connect(m_importAct, &QAction::triggered, this, &MainWindow::importSongDialog);
+
+    m_exportAct = new QAction(tr("Export Regions…"), this);
     m_exportAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
-    connect(m_exportAct, &QAction::triggered, this, &MainWindow::exportSections);
+    connect(m_exportAct, &QAction::triggered, this, &MainWindow::exportRegions);
 
     m_playAct = new QAction(tr("Play"), this);
-    m_playAct->setShortcut(Qt::Key_Space);
-    connect(m_playAct, &QAction::triggered, this, &MainWindow::togglePlay);
+    connect(m_playAct, &QAction::triggered, this, &MainWindow::play);
+
+    m_pauseAct = new QAction(tr("Pause"), this);
+    connect(m_pauseAct, &QAction::triggered, m_player, &QMediaPlayer::pause);
+
+    m_playPauseAct = new QAction(tr("Play/Pause"), this);
+    m_playPauseAct->setShortcut(Qt::Key_Space);
+    connect(m_playPauseAct, &QAction::triggered, this, &MainWindow::togglePlay);
 
     m_stopAct = new QAction(tr("Stop"), this);
     m_stopAct->setShortcut(Qt::Key_Escape);
@@ -164,7 +198,12 @@ void MainWindow::createActions()
     connect(m_clearAct, &QAction::triggered, this, [this] { m_model->clearRange(m_model->armed()); });
 
     QMenu *file = menuBar()->addMenu(tr("&File"));
+    file->addAction(m_newAct);
     file->addAction(m_openAct);
+    file->addAction(m_saveAct);
+    file->addAction(m_saveAsAct);
+    file->addSeparator();
+    file->addAction(m_importAct);
     file->addAction(m_exportAct);
     file->addSeparator();
     QAction *quit = file->addAction(tr("Quit"), this, &QWidget::close);
@@ -181,41 +220,184 @@ void MainWindow::createActions()
 
     QMenu *transport = menuBar()->addMenu(tr("&Transport"));
     transport->addAction(m_playAct);
+    transport->addAction(m_pauseAct);
+    transport->addAction(m_playPauseAct);
     transport->addAction(m_stopAct);
+    transport->addSeparator();
     transport->addAction(m_playSectionAct);
     transport->addAction(m_loopAct);
 
     QToolBar *tb = addToolBar(tr("Main"));
     tb->setMovable(false);
     tb->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    tb->addAction(m_openAct);
-    tb->addSeparator();
     tb->addAction(m_playAct);
+    tb->addAction(m_pauseAct);
     tb->addAction(m_stopAct);
-    tb->addAction(m_loopAct);
-    tb->addSeparator();
-    tb->addAction(m_fitAct);
-    tb->addSeparator();
-    tb->addAction(m_exportAct);
 }
 
-void MainWindow::openDialog()
+void MainWindow::newProject()
 {
-    const QString path = QFileDialog::getOpenFileName(this, tr("Open Audio"), QFileInfo(m_path).absolutePath(),
+    if (!maybeSave())
+        return;
+    resetSong();
+    m_projectPath.clear();
+    setWindowModified(false);
+    updateTitle();
+}
+
+void MainWindow::openProjectDialog()
+{
+    if (!maybeSave())
+        return;
+    const QString start = !m_projectPath.isEmpty() ? QFileInfo(m_projectPath).absolutePath()
+                                                   : QFileInfo(m_path).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open Project"), start, tr(Project::kFileFilter));
+    if (!path.isEmpty())
+        openProject(path);
+}
+
+void MainWindow::openProject(const QString &path)
+{
+    Project::Data data;
+    QString error;
+    if (!Project::load(path, &data, &error)) {
+        QMessageBox::warning(this, tr("Open failed"), tr("Could not open %1:\n%2").arg(QFileInfo(path).fileName(), error));
+        return;
+    }
+
+    bool relocated = false;
+    if (!data.songPath.isEmpty() && !QFileInfo::exists(data.songPath)) {
+        const auto answer = QMessageBox::question(
+            this, tr("Song not found"),
+            tr("The song for this project was not found:\n%1\n\nLocate it?").arg(QDir::toNativeSeparators(data.songPath)),
+            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
+        if (answer != QMessageBox::Yes)
+            return;
+        data.songPath = QFileDialog::getOpenFileName(this, tr("Locate Song"), QFileInfo(path).absolutePath(),
+                                                     tr("Audio files (*.mp3 *.wav *.m4a *.flac *.ogg);;All files (*)"));
+        if (data.songPath.isEmpty())
+            return;
+        relocated = true;
+    }
+
+    resetSong();
+    m_projectPath = path;
+    m_pendingRegions = data.regions;
+    m_pendingRate = data.sampleRate;
+    if (!data.songPath.isEmpty())
+        loadSong(data.songPath);
+    // A relocated song means the saved path is stale.
+    setWindowModified(relocated);
+    updateTitle();
+}
+
+bool MainWindow::saveProject()
+{
+    if (m_projectPath.isEmpty())
+        return saveProjectAs();
+    return writeProject(m_projectPath);
+}
+
+bool MainWindow::saveProjectAs()
+{
+    QString suggested = m_projectPath;
+    if (suggested.isEmpty() && !m_path.isEmpty())
+        suggested = QFileInfo(m_path).absoluteDir().filePath(QFileInfo(m_path).completeBaseName() + "." + Project::kSuffix);
+    QString path = QFileDialog::getSaveFileName(this, tr("Save Project"), suggested, tr(Project::kFileFilter));
+    if (path.isEmpty())
+        return false;
+    if (QFileInfo(path).suffix().isEmpty())
+        path += QStringLiteral(".") + Project::kSuffix;
+    return writeProject(path);
+}
+
+bool MainWindow::writeProject(const QString &path)
+{
+    Project::Data data;
+    data.songPath = m_path;
+    data.sampleRate = m_audio.sampleRate;
+    for (const Section &s : m_model->sections()) {
+        if (s.isSet())
+            data.regions.push_back({s.name, s.startFrame, s.endFrame});
+    }
+
+    QString error;
+    if (!Project::save(path, data, &error)) {
+        QMessageBox::warning(this, tr("Save failed"), tr("Could not save %1:\n%2").arg(QFileInfo(path).fileName(), error));
+        return false;
+    }
+    m_projectPath = path;
+    setWindowModified(false);
+    updateTitle();
+    statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), 4000);
+    return true;
+}
+
+// Returns false if the user cancelled.
+bool MainWindow::maybeSave()
+{
+    if (!isWindowModified())
+        return true;
+    const auto answer = QMessageBox::warning(
+        this, tr("Unsaved changes"),
+        tr("Save changes to %1?").arg(m_projectPath.isEmpty() ? tr("Untitled") : QFileInfo(m_projectPath).fileName()),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    if (answer == QMessageBox::Save)
+        return saveProject();
+    return answer == QMessageBox::Discard;
+}
+
+void MainWindow::importSongDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Import Song"), QFileInfo(m_path).absolutePath(),
                                                       tr("Audio files (*.mp3 *.wav *.m4a *.flac *.ogg);;All files (*)"));
     if (!path.isEmpty())
-        openFile(path);
+        importSong(path);
 }
 
-void MainWindow::openFile(const QString &path)
+// Replaces the project's song; existing regions belong to the old song, so they are cleared.
+void MainWindow::importSong(const QString &path)
 {
+    if (m_model->anySet()) {
+        const auto answer = QMessageBox::question(
+            this, tr("Replace song?"), tr("Importing a new song clears all pad regions."),
+            QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (answer != QMessageBox::Ok)
+            return;
+    }
+    resetSong();
+    loadSong(path);
+    setWindowModified(true);
+}
+
+void MainWindow::resetSong()
+{
+    m_loader->cancel();
+    m_loading = false;
+    m_progress->hide();
     m_player->stop();
     m_player->setSource({});
+    m_sectionStartMs = m_sectionEndMs = -1;
     m_waveform->setAudio(nullptr);
     m_audio = {};
-    m_path = path;
-    m_model->clearAll();
+    m_path.clear();
+    m_pendingRegions.clear();
+    m_pendingRate = 0;
 
+    m_trackChanges = false;
+    m_model->clearAll();
+    m_trackChanges = true;
+
+    m_fileLabel->setText(tr("No song"));
+    updateActions();
+    updateRangeLabel();
+    updateStartStop();
+}
+
+void MainWindow::loadSong(const QString &path)
+{
+    m_path = path;
+    m_loading = true;
     m_fileLabel->setText(tr("Loading %1…").arg(QFileInfo(path).fileName()));
     m_progress->setValue(0);
     m_progress->show();
@@ -226,35 +408,78 @@ void MainWindow::openFile(const QString &path)
 void MainWindow::onAudioLoaded(const AudioData &audio)
 {
     m_audio = audio;
+    m_loading = false;
     m_progress->hide();
     m_waveform->setAudio(&m_audio);
     m_pads->setSampleRate(m_audio.sampleRate);
     m_player->setSource(QUrl::fromLocalFile(m_path));
+    applyPendingRegions();
 
     m_fileLabel->setText(QStringLiteral("%1  ·  %2  ·  %3 Hz  ·  %4 ch")
                              .arg(QFileInfo(m_path).fileName(), formatSeconds(m_audio.durationSeconds()))
                              .arg(m_audio.sampleRate)
                              .arg(m_audio.channels));
-    setWindowTitle(QStringLiteral("NXArranger — %1").arg(QFileInfo(m_path).fileName()));
     updateActions();
     updateRangeLabel();
+    updateTitle();
+}
+
+void MainWindow::applyPendingRegions()
+{
+    m_trackChanges = false;
+    for (const Project::Region &r : std::as_const(m_pendingRegions)) {
+        qint64 start = r.startFrame;
+        qint64 end = r.endFrame;
+        // Rescale if the decoder reports a different rate than when saved.
+        if (m_pendingRate > 0 && m_pendingRate != m_audio.sampleRate) {
+            start = start * m_audio.sampleRate / m_pendingRate;
+            end = end * m_audio.sampleRate / m_pendingRate;
+        }
+        start = std::clamp<qint64>(start, 0, m_audio.frames());
+        end = std::clamp<qint64>(end, 0, m_audio.frames());
+        for (int i = 0; i < m_model->count(); ++i) {
+            if (m_model->at(i).name == r.name && end > start)
+                m_model->setRange(i, start, end);
+        }
+    }
+    m_trackChanges = true;
+    m_pendingRegions.clear();
+    m_pendingRate = 0;
 }
 
 void MainWindow::onLoadFailed(const QString &message)
 {
-    m_progress->hide();
-    m_fileLabel->setText(tr("No file"));
-    m_path.clear();
-    updateActions();
-    QMessageBox::warning(this, tr("Open failed"), message);
+    const QString song = QFileInfo(m_path).fileName();
+    // If this was a project's song, its regions never loaded; detach from the
+    // file so a later Save can't overwrite it with an empty project.
+    if (!m_pendingRegions.isEmpty()) {
+        m_projectPath.clear();
+        updateTitle();
+    }
+    resetSong();
+    QMessageBox::warning(this, tr("Import failed"), tr("Could not load %1:\n%2").arg(song, message));
 }
 
-void MainWindow::exportSections()
+void MainWindow::updateTitle()
+{
+    const QString name = m_projectPath.isEmpty() ? tr("Untitled") : QFileInfo(m_projectPath).completeBaseName();
+    setWindowTitle(QStringLiteral("NXArranger — %1[*]").arg(name));
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    if (maybeSave())
+        event->accept();
+    else
+        event->ignore();
+}
+
+void MainWindow::exportRegions()
 {
     if (m_audio.isEmpty() || !m_model->anySet())
         return;
 
-    const QString dir = QFileDialog::getExistingDirectory(this, tr("Export sections to folder"),
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Export regions to folder"),
                                                           QFileInfo(m_path).absolutePath());
     if (dir.isEmpty())
         return;
@@ -294,12 +519,18 @@ void MainWindow::togglePlay()
 {
     if (m_audio.isEmpty())
         return;
-    if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+    if (m_player->playbackState() == QMediaPlayer::PlayingState)
         m_player->pause();
-    } else {
-        m_sectionStartMs = m_sectionEndMs = -1;
-        m_player->play();
-    }
+    else
+        play();
+}
+
+void MainWindow::play()
+{
+    if (m_audio.isEmpty())
+        return;
+    m_sectionStartMs = m_sectionEndMs = -1;
+    m_player->play();
     updateStartStop();
 }
 
@@ -382,12 +613,18 @@ void MainWindow::updateActions()
     const int armed = m_model->armed();
     const bool armedSet = armed >= 0 && m_model->at(armed).isSet();
     m_exportAct->setEnabled(loaded && m_model->anySet());
-    m_playAct->setEnabled(loaded);
+    const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
+    m_playAct->setEnabled(loaded && !playing);
+    m_pauseAct->setEnabled(loaded && playing);
+    m_playPauseAct->setEnabled(loaded);
     m_stopAct->setEnabled(loaded);
     m_playSectionAct->setEnabled(loaded && armedSet);
     m_pads->setStartStopEnabled(loaded && armedSet);
     m_fitAct->setEnabled(loaded);
     m_clearAct->setEnabled(armedSet);
+    // Saving mid-decode would drop regions that are still waiting to be applied.
+    m_saveAct->setEnabled(!m_loading);
+    m_saveAsAct->setEnabled(!m_loading);
 }
 
 void MainWindow::updateRangeLabel()
@@ -422,11 +659,21 @@ qint64 MainWindow::frameToMs(qint64 frame) const
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 {
     const QList<QUrl> urls = event->mimeData()->urls();
-    if (urls.size() == 1 && urls.first().isLocalFile() && isAudioFile(urls.first().toLocalFile()))
+    if (urls.size() != 1 || !urls.first().isLocalFile())
+        return;
+    const QString path = urls.first().toLocalFile();
+    if (isAudioFile(path) || isProjectFile(path))
         event->acceptProposedAction();
 }
 
+// Dropping a project opens it; dropping audio imports it as the song.
 void MainWindow::dropEvent(QDropEvent *event)
 {
-    openFile(event->mimeData()->urls().first().toLocalFile());
+    const QString path = event->mimeData()->urls().first().toLocalFile();
+    if (isProjectFile(path)) {
+        if (maybeSave())
+            openProject(path);
+    } else {
+        importSong(path);
+    }
 }

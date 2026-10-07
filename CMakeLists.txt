@@ -18,6 +18,8 @@ add_library(nxcore STATIC
     src/AudioData.h
     src/WavWriter.h
     src/WavWriter.cpp
+    src/Project.h
+    src/Project.cpp
 )
 target_include_directories(nxcore PUBLIC src)
 target_link_libraries(nxcore PUBLIC Qt6::Core)
@@ -48,3 +50,7 @@ enable_testing()
 qt_add_executable(tst_wavwriter tests/tst_wavwriter.cpp)
 target_link_libraries(tst_wavwriter PRIVATE nxcore Qt6::Test)
 add_test(NAME tst_wavwriter COMMAND tst_wavwriter)
+
+qt_add_executable(tst_project tests/tst_project.cpp)
+target_link_libraries(tst_project PRIVATE nxcore Qt6::Test)
+add_test(NAME tst_project COMMAND tst_project)
