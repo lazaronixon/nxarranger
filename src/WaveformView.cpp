@@ -17,11 +17,12 @@ constexpr int kEdgeGrab = 5;
 constexpr int kDragThreshold = 3;
 constexpr double kMinFramesPerPixel = 1.0 / 16.0;
 
-const QColor kBackground(0x16, 0x18, 0x1d);
-const QColor kWaveColor(0x8f, 0xd3, 0xff);
-const QColor kRulerColor(0x24, 0x27, 0x2e);
-const QColor kTextColor(0xc8, 0xcc, 0xd4);
-const QColor kPlayheadColor(0xff, 0xff, 0xff);
+const QColor kBackground(0xff, 0xff, 0xff);
+const QColor kWaveColor(0x1f, 0x6f, 0xc5);
+const QColor kRulerColor(0xee, 0xf0, 0xf3);
+const QColor kTextColor(0x4a, 0x4f, 0x57);
+const QColor kPlayheadColor(0x1d, 0x1d, 0x1f);
+const QColor kCenterLineColor(0, 0, 0, 30);
 
 QString formatTime(double seconds, bool withMillis)
 {
@@ -260,7 +261,7 @@ void WaveformView::paintEvent(QPaintEvent *)
         const double y1 = mid - lo / 32768.0 * half;
         p.drawLine(QPointF(x + 0.5, y0), QPointF(x + 0.5, std::max(y1, y0 + 1.0)));
     }
-    p.setPen(QColor(255, 255, 255, 40));
+    p.setPen(kCenterLineColor);
     p.drawLine(QPointF(wr.left(), mid), QPointF(wr.right(), mid));
 
     // Playhead.

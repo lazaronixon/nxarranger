@@ -335,7 +335,8 @@ bool MainWindow::saveProjectAs()
     QString path = QFileDialog::getSaveFileName(this, tr("Save Project"), suggested, tr(Project::kFileFilter));
     if (path.isEmpty())
         return false;
-    if (QFileInfo(path).suffix().isEmpty())
+    // Always end in .nxa, even when the typed name contains other dots.
+    if (!isProjectFile(path))
         path += QStringLiteral(".") + Project::kSuffix;
     return writeProject(path);
 }
