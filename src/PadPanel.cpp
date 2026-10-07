@@ -95,7 +95,7 @@ PadPanel::PadPanel(SectionModel *model, QWidget *parent)
     transport->addWidget(transportLabel);
     m_startStop = new QPushButton;
     m_startStop->setFocusPolicy(Qt::NoFocus);
-    m_startStop->setToolTip(tr("Play the selected pad's range / stop (Enter)"));
+    m_startStop->setToolTip(tr("Play the selected pad's range / stop"));
     m_startStop->setStyleSheet(QStringLiteral(
         "QPushButton {"
         "  min-width: 46px; min-height: 40px;"

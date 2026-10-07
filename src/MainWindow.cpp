@@ -174,9 +174,6 @@ void MainWindow::createActions()
     m_stopAct->setShortcut(Qt::Key_Escape);
     connect(m_stopAct, &QAction::triggered, this, &MainWindow::stop);
 
-    m_playSectionAct = new QAction(tr("Start/Stop Section"), this);
-    m_playSectionAct->setShortcut(Qt::Key_Return);
-    connect(m_playSectionAct, &QAction::triggered, this, &MainWindow::toggleSection);
     connect(m_pads, &PadPanel::startStopClicked, this, &MainWindow::toggleSection);
 
     m_goToStartAct = new QAction(tr("Go to Start"), this);
@@ -229,8 +226,6 @@ void MainWindow::createActions()
     transport->addAction(m_playPauseAct);
     transport->addAction(m_stopAct);
     transport->addAction(m_goToStartAct);
-    transport->addSeparator();
-    transport->addAction(m_playSectionAct);
 
     QToolBar *tb = addToolBar(tr("Main"));
     tb->setMovable(false);
@@ -336,9 +331,20 @@ bool MainWindow::saveProjectAs()
     QString suggested = m_projectPath;
     if (suggested.isEmpty() && !m_path.isEmpty())
         suggested = QFileInfo(m_path).absoluteDir().filePath(QFileInfo(m_path).completeBaseName() + "." + Project::kSuffix);
-    QString path = QFileDialog::getSaveFileName(this, tr("Save Project"), suggested, tr(Project::kFileFilter));
-    if (path.isEmpty())
+    if (suggested.isEmpty())
+        suggested = tr("Untitled") + "." + Project::kSuffix;
+
+    // A dialog instance (rather than getSaveFileName) can set a default
+    // suffix, which makes the macOS save panel use .nxa as the file type.
+    QFileDialog dialog(this, tr("Save Project"));
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setFileMode(QFileDialog::AnyFile);
+    dialog.setNameFilter(tr(Project::kFileFilter));
+    dialog.setDefaultSuffix(Project::kSuffix);
+    dialog.selectFile(suggested);
+    if (dialog.exec() != QDialog::Accepted || dialog.selectedFiles().isEmpty())
         return false;
+    QString path = dialog.selectedFiles().constFirst();
     // Always end in .nxa, even when the typed name contains other dots.
     if (!isProjectFile(path))
         path += QStringLiteral(".") + Project::kSuffix;
@@ -662,7 +668,6 @@ void MainWindow::updateActions()
     m_playPauseAct->setEnabled(loaded);
     m_stopAct->setEnabled(loaded);
     m_goToStartAct->setEnabled(loaded);
-    m_playSectionAct->setEnabled(loaded && armedSet);
     m_pads->setStartStopEnabled(loaded && armedSet);
     m_fitAct->setEnabled(loaded);
     m_clearAct->setEnabled(armedSet);

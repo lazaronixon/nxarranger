@@ -103,7 +103,6 @@ private:
     QAction *m_playPauseAct = nullptr;
     QAction *m_stopAct = nullptr;
     QAction *m_goToStartAct = nullptr;
-    QAction *m_playSectionAct = nullptr;
     QAction *m_fitAct = nullptr;
     QAction *m_clearAct = nullptr;
 
