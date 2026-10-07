@@ -110,6 +110,7 @@ MainWindow::MainWindow(QWidget *parent)
         else
             m_tick->stop();
         onPlaybackTick();
+        updateStartStop();
     });
     connect(m_player, &QMediaPlayer::errorOccurred, this, [this](QMediaPlayer::Error, const QString &msg) {
         statusBar()->showMessage(tr("Playback error: %1").arg(msg), 5000);
@@ -138,9 +139,10 @@ void MainWindow::createActions()
     m_stopAct->setShortcut(Qt::Key_Escape);
     connect(m_stopAct, &QAction::triggered, this, &MainWindow::stop);
 
-    m_playSectionAct = new QAction(tr("Play Section"), this);
+    m_playSectionAct = new QAction(tr("Start/Stop Section"), this);
     m_playSectionAct->setShortcut(Qt::Key_Return);
-    connect(m_playSectionAct, &QAction::triggered, this, &MainWindow::playSection);
+    connect(m_playSectionAct, &QAction::triggered, this, &MainWindow::toggleSection);
+    connect(m_pads, &PadPanel::startStopClicked, this, &MainWindow::toggleSection);
 
     m_loopAct = new QAction(tr("Loop"), this);
     m_loopAct->setCheckable(true);
@@ -190,7 +192,6 @@ void MainWindow::createActions()
     tb->addSeparator();
     tb->addAction(m_playAct);
     tb->addAction(m_stopAct);
-    tb->addAction(m_playSectionAct);
     tb->addAction(m_loopAct);
     tb->addSeparator();
     tb->addAction(m_fitAct);
@@ -299,6 +300,7 @@ void MainWindow::togglePlay()
         m_sectionStartMs = m_sectionEndMs = -1;
         m_player->play();
     }
+    updateStartStop();
 }
 
 void MainWindow::stop()
@@ -308,6 +310,15 @@ void MainWindow::stop()
     m_sectionStartMs = m_sectionEndMs = -1;
     m_player->setPosition(back);
     m_waveform->setPlayhead(msToFrame(back));
+    updateStartStop();
+}
+
+void MainWindow::toggleSection()
+{
+    if (m_sectionEndMs >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState)
+        stop();
+    else
+        playSection();
 }
 
 void MainWindow::playSection()
@@ -320,6 +331,12 @@ void MainWindow::playSection()
     m_sectionEndMs = frameToMs(s.endFrame);
     m_player->setPosition(m_sectionStartMs);
     m_player->play();
+    updateStartStop();
+}
+
+void MainWindow::updateStartStop()
+{
+    m_pads->setStartStopActive(m_sectionEndMs >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState);
 }
 
 void MainWindow::onPlaybackTick()
@@ -332,6 +349,7 @@ void MainWindow::onPlaybackTick()
             m_player->pause();
             m_player->setPosition(m_sectionStartMs);
             m_sectionStartMs = m_sectionEndMs = -1;
+            updateStartStop();
         }
         m_waveform->setPlayhead(msToFrame(m_player->position()));
         return;
@@ -344,6 +362,7 @@ void MainWindow::seekToFrame(qint64 frame)
     m_sectionStartMs = m_sectionEndMs = -1;
     m_player->setPosition(frameToMs(frame));
     m_waveform->setPlayhead(frame);
+    updateStartStop();
 }
 
 void MainWindow::syncScrollBar()
@@ -366,6 +385,7 @@ void MainWindow::updateActions()
     m_playAct->setEnabled(loaded);
     m_stopAct->setEnabled(loaded);
     m_playSectionAct->setEnabled(loaded && armedSet);
+    m_pads->setStartStopEnabled(loaded && armedSet);
     m_fitAct->setEnabled(loaded);
     m_clearAct->setEnabled(armedSet);
 }

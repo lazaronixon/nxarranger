@@ -72,7 +72,8 @@ PadPanel::PadPanel(SectionModel *model, QWidget *parent)
             row->addLayout(col);
         }
 
-        const QString caption = s.name == s.group ? s.group.toUpper() : s.name.section(' ', -1);
+        // Single pads (Break) are labelled by the group title above them only.
+        const QString caption = s.name == s.group ? QString() : s.name.section(' ', -1);
         auto *button = new QPushButton(caption);
         button->setCheckable(true);
         button->setFocusPolicy(Qt::NoFocus);
@@ -87,6 +88,29 @@ PadPanel::PadPanel(SectionModel *model, QWidget *parent)
     }
     row->addStretch();
 
+    auto *transport = new QVBoxLayout;
+    transport->setSpacing(4);
+    auto *transportLabel = new QLabel(tr("START/STOP"));
+    transportLabel->setAlignment(Qt::AlignCenter);
+    transport->addWidget(transportLabel);
+    m_startStop = new QPushButton;
+    m_startStop->setFocusPolicy(Qt::NoFocus);
+    m_startStop->setToolTip(tr("Play the selected pad's range / stop (Enter)"));
+    m_startStop->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  min-width: 46px; min-height: 40px;"
+        "  color: #d8dbe0; font-weight: bold;"
+        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3a3e46, stop:1 #24272d);"
+        "  border: 1px solid #111; border-radius: 5px; border-top: 4px solid #2b2e34;"
+        "}"
+        "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #474c55, stop:1 #2c3037); }"
+        "QPushButton:disabled { color: #5c6068; }"
+        "QPushButton[active=\"true\"] { color: #111; border-top: 4px solid #fff;"
+        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7dff9a, stop:1 #2fbf55); }"));
+    connect(m_startStop, &QAbstractButton::clicked, this, &PadPanel::startStopClicked);
+    transport->addWidget(m_startStop);
+    row->addLayout(transport);
+
     connect(m_group, &QButtonGroup::idClicked, m_model, &SectionModel::setArmed);
     connect(m_model, &SectionModel::sectionChanged, this, &PadPanel::refresh);
     connect(m_model, &SectionModel::armedChanged, this, [this](int index) {
@@ -100,6 +124,20 @@ void PadPanel::setSampleRate(int sampleRate)
     m_sampleRate = sampleRate;
     for (int i = 0; i < m_buttons.size(); ++i)
         refresh(i);
+}
+
+void PadPanel::setStartStopActive(bool active)
+{
+    if (m_startStop->property("active").toBool() == active)
+        return;
+    m_startStop->setProperty("active", active);
+    m_startStop->style()->unpolish(m_startStop);
+    m_startStop->style()->polish(m_startStop);
+}
+
+void PadPanel::setStartStopEnabled(bool enabled)
+{
+    m_startStop->setEnabled(enabled);
 }
 
 void PadPanel::refresh(int index)

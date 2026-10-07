@@ -38,8 +38,10 @@ private:
 
     void togglePlay();
     void stop();
+    void toggleSection();
     void playSection();
     void onPlaybackTick();
+    void updateStartStop();
     void seekToFrame(qint64 frame);
 
     void syncScrollBar();

@@ -18,6 +18,13 @@ public:
     // Converts a frame position to seconds for tooltips.
     void setSampleRate(int sampleRate);
 
+    // START/STOP pad: lit while the armed section is playing.
+    void setStartStopActive(bool active);
+    void setStartStopEnabled(bool enabled);
+
+signals:
+    void startStopClicked();
+
 private:
     void refresh(int index);
     void showPadMenu(int index, const QPoint &globalPos);
@@ -25,5 +32,6 @@ private:
     SectionModel *m_model;
     QButtonGroup *m_group;
     QVector<QAbstractButton *> m_buttons;
+    QAbstractButton *m_startStop = nullptr;
     int m_sampleRate = 0;
 };
