@@ -8,6 +8,7 @@
 #include "WaveformView.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QAudioOutput>
 #include <QCloseEvent>
 #include <QDir>
@@ -504,7 +505,7 @@ void MainWindow::onLoadFailed(const QString &message)
 void MainWindow::updateTitle()
 {
     const QString name = m_projectPath.isEmpty() ? tr("Untitled") : QFileInfo(m_projectPath).completeBaseName();
-    setWindowTitle(QStringLiteral("NXArranger — %1[*]").arg(name));
+    setWindowTitle(QStringLiteral("NXArranger %1 — %2[*]").arg(QApplication::applicationVersion(), name));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
